@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
@@ -129,11 +128,11 @@
         </div>
 
         <!-- Start / Stop Controls -->
-        <button id="startBtn" onclick="startBot()" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-all shadow-lg hover:shadow-emerald-900/40 active:scale-95">
+        <button id="startBtn" onclick="startBot()" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-all shadow-lg hover:shadow-emerald-900/40 active:scale-[0.99]">
           <i class="fa-solid fa-play text-xs"></i>
           <span>START BOT</span>
         </button>
-        <button id="stopBtn" onclick="stopBot()" disabled class="flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-600/50 text-gray-400 font-semibold text-xs transition-all opacity-60 cursor-not-allowed" id="stopBtn">
+        <button id="stopBtn" onclick="stopBot()" disabled class="flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-600/50 text-gray-400 font-semibold text-xs transition-all opacity-60 cursor-not-allowed">
           <i class="fa-solid fa-square text-xs"></i>
           <span>STOP BOT</span>
         </button>
@@ -154,7 +153,7 @@
           <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
             <i class="fa-solid fa-sliders text-blue-400 mr-1.5"></i>Contract Type
           </label>
-          <select id="contractTypeSelect" onchange="onContractTypeChange()" class="w-full bg-darkBg border border-darkBorder text-white text-sm rounded-lg px-3.5 py-2.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none font-medium">
+          <select id="contractTypeSelect" onchange="onContractTypeChange()" class="w-full bg-darkBg border border-darkBorder text-white text-sm rounded-lg px-3.5 py-2.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none">
             <option value="MATCHES_DIFFERS">Matches / Differs</option>
             <option value="EVEN_ODD" selected>Even / Odd</option>
             <option value="OVER_UNDER">Over / Under</option>
@@ -166,7 +165,7 @@
           <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
             <i class="fa-solid fa-wave-square text-blue-400 mr-1.5"></i>Volatility Index
           </label>
-          <select id="symbolSelect" onchange="onSymbolChange()" class="w-full bg-darkBg border border-darkBorder text-white text-sm rounded-lg px-3.5 py-2.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none font-medium">
+          <select id="symbolSelect" onchange="onSymbolChange()" class="w-full bg-darkBg border border-darkBorder text-white text-sm rounded-lg px-3.5 py-2.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none">
             <option value="R_10">Volatility 10 Index (R_10)</option>
             <option value="R_25">Volatility 25 Index (R_25)</option>
             <option value="R_50" selected>Volatility 50 Index (R_50)</option>
@@ -190,7 +189,7 @@
             <i class="fa-solid fa-bullseye text-blue-400 mr-1.5"></i>Barrier / Target Digit (0-9)
           </label>
           <div class="flex items-center gap-2">
-            <input id="barrierInput" type="number" min="0" max="9" value="4" onchange="updateAnalyticsUI()" class="w-full bg-darkBg border border-darkBorder text-white text-sm rounded-lg px-3.5 py-2.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none font-mono font-bold" />
+            <input id="barrierInput" type="number" min="0" max="9" value="4" onchange="updateAnalyticsUI()" class="w-full bg-darkBg border border-darkBorder text-white text-sm rounded-lg px-3.5 py-2.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none" />
             <span class="text-xs text-gray-500 font-mono italic whitespace-nowrap">Used for Over/Under & Matches</span>
           </div>
         </div>
@@ -313,7 +312,7 @@
         <!-- Strategy Description Text -->
         <div class="bg-blue-950/20 border border-blue-900/40 rounded-lg p-3">
           <p id="strategyRationale" class="text-xs text-blue-200/80 leading-relaxed font-sans">
-            Start the bot to connect to Deriv WebSocket feed. The algorithmic engine will continuously stream ticks, calculate moving probabilities, and generate visual trade signals upon streak or density anomalies.
+            Start the bot to connect to Deriv WebSocket feed. The algorithmic engine will continuously stream ticks, calculate moving probabilities, and generate visual trade signals upon streak patterns.
           </p>
         </div>
 
@@ -384,6 +383,7 @@
     let secondsRemaining = 0;
     let currentSignal = null;
     let activeSubscriptionId = null;
+    let pingInterval = null;
 
     /* Web Audio Context for Sound Effects */
     let audioCtx = null;
@@ -412,6 +412,31 @@
       renderDigitsGrid();
       onContractTypeChange();
     });
+
+    window.addEventListener('beforeunload', () => {
+      stopBot(false);
+    });
+
+    function startKeepAlive() {
+      stopKeepAlive();
+
+      pingInterval = setInterval(() => {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          try {
+            socket.send(JSON.stringify({ ping: 1 }));
+          } catch (err) {
+            console.warn('Ping failed:', err);
+          }
+        }
+      }, 30000);
+    }
+
+    function stopKeepAlive() {
+      if (pingInterval) {
+        clearInterval(pingInterval);
+        pingInterval = null;
+      }
+    }
 
     /* Render initial 0-9 Digit Cards Grid */
     function renderDigitsGrid() {
@@ -469,7 +494,6 @@
     function onSymbolChange() {
       activeSymbol = document.getElementById('symbolSelect').value;
       if (isConnected) {
-        // Unsubscribe and resubscribe to new symbol
         stopBot(false);
         setTimeout(() => startBot(), 300);
       }
@@ -477,32 +501,35 @@
 
     /* START BOT / WEBSOCKET INITIALIZATION */
     function startBot() {
+      if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+        return;
+      }
+
       const appId = document.getElementById('appIdInput').value.trim() || "1089";
       activeSymbol = document.getElementById('symbolSelect').value;
       activeBarrier = parseInt(document.getElementById('barrierInput').value) || 4;
 
       updateStatus("Connecting...", "yellow");
-      
-      const wsUrl = `wss://ws.derivws.com/websockets/v3?app_id=${appId}`;
+
+      const wsUrl = `wss://ws.deriv.com/websockets/v3?app_id=${appId}`;
 
       try {
         socket = new WebSocket(wsUrl);
 
-        socket.onopen = (event) => {
+        socket.onopen = () => {
           isConnected = true;
           updateStatus("Connected", "green");
           toggleControls(true);
+          startKeepAlive();
 
-          // Request Tick History & Subscribe in 1 request as supported by Deriv WS API
           const req = {
-            "ticks_history": activeSymbol,
-            "adjust_start_time": 1,
-            "count": 100,
-            "end": "latest",
-            "start": 1,
-            "style": "ticks",
-            "subscribe": 1
+            ticks_history: activeSymbol,
+            style: 'ticks',
+            count: 100,
+            end: 'latest',
+            subscribe: 1
           };
+
           socket.send(JSON.stringify(req));
           addLog("SYSTEM", activeSymbol, "CONNECTED", "--", "WebSocket connection opened successfully", "--");
         };
@@ -510,46 +537,74 @@
         socket.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
+
+            if (data.error) {
+              console.error('Deriv error:', data.error);
+              updateStatus('Error', 'red');
+              return;
+            }
+
+            if (data.msg_type === 'ping') {
+              if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ pong: data.ping }));
+              }
+              return;
+            }
+
+            if (data.msg_type === 'pong') {
+              return;
+            }
+
             handleIncomingMessage(data);
           } catch (e) {
-            console.error("Error parsing WS message", e);
+            console.error('Error parsing WS message', e);
           }
         };
 
         socket.onerror = (error) => {
-          console.error("WebSocket Error:", error);
-          updateStatus("Error", "red");
+          console.error('WebSocket Error:', error);
+          updateStatus('Error', 'red');
         };
 
         socket.onclose = () => {
+          stopKeepAlive();
           isConnected = false;
-          updateStatus("Disconnected", "gray");
+          updateStatus('Disconnected', 'gray');
           toggleControls(false);
-          addLog("SYSTEM", activeSymbol, "DISCONNECTED", "--", "Connection closed", "--");
+          addLog('SYSTEM', activeSymbol, 'DISCONNECTED', '--', 'Connection closed', '--');
         };
 
       } catch (err) {
-        console.error("Failed to connect", err);
-        updateStatus("Connection Failed", "red");
+        console.error('Failed to connect', err);
+        updateStatus('Connection Failed', 'red');
       }
     }
 
     /* STOP BOT / GRACEFUL TERMINATION */
     function stopBot(clearData = true) {
-      if (countdownInterval) clearInterval(countdownInterval);
+      stopKeepAlive();
+
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+      }
       document.getElementById('timerDisplay').textContent = "-- Ticks";
 
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        // Send forget_all for ticks to unsubscribe gracefully
-        const forgetReq = { "forget_all": "ticks" };
-        socket.send(JSON.stringify(forgetReq));
-        
-        socket.close();
+      if (socket) {
+        try {
+          socket.send(JSON.stringify({ forget_all: 'ticks' }));
+        } catch (e) {
+          console.warn('Forget all failed:', e);
+        }
+
+        if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+          socket.close();
+        }
       }
 
       socket = null;
       isConnected = false;
-      updateStatus("Disconnected", "gray");
+      updateStatus('Disconnected', 'gray');
       toggleControls(false);
       resetGlowCircles();
 
@@ -564,16 +619,14 @@
     function handleIncomingMessage(data) {
       const msgType = data.msg_type;
 
-      // Extract subscription ID if provided
       if (data.subscription) {
         activeSubscriptionId = data.subscription.id;
       }
 
-      if (msgType === "history") {
-        // Process array of historical ticks
+      if (msgType === 'history') {
         const prices = data.history.prices || [];
         const times = data.history.times || [];
-        
+
         tickHistory = [];
         fullTickObjects = [];
 
@@ -584,7 +637,6 @@
           fullTickObjects.push({ quote: price, epoch: times[idx], digit: digit });
         });
 
-        // Cap at last 100
         if (tickHistory.length > 100) {
           tickHistory = tickHistory.slice(-100);
           fullTickObjects = fullTickObjects.slice(-100);
@@ -593,15 +645,13 @@
         updateAnalyticsUI();
         evaluateStrategySignals();
 
-      } else if (msgType === "tick") {
-        // Process live incoming tick
+      } else if (msgType === 'tick') {
         const tick = data.tick;
         if (!tick) return;
 
         const pipSize = tick.pip_size !== undefined ? tick.pip_size : 2;
         const lastDigit = getDigitFromQuote(tick.quote, pipSize);
 
-        // Update rolling history
         tickHistory.push(lastDigit);
         fullTickObjects.push({ quote: tick.quote, epoch: tick.epoch, digit: lastDigit });
 
@@ -610,7 +660,6 @@
           fullTickObjects.shift();
         }
 
-        // Display current quote
         document.getElementById('lastTickDisplay').textContent = `Quote: ${tick.quote} (Digit: ${lastDigit})`;
 
         updateAnalyticsUI();
@@ -662,25 +711,24 @@
       for (let i = 0; i <= 9; i++) {
         const count = counts[i];
         const pct = ((count / totalTicks) * 100).toFixed(1);
-        
+
         const bar = document.getElementById(`digit-bar-${i}`);
         const pctText = document.getElementById(`digit-percent-${i}`);
         const countText = document.getElementById(`digit-count-${i}`);
         const card = document.getElementById(`digit-card-${i}`);
         const badge = document.getElementById(`digit-badge-${i}`);
 
-        if (bar) bar.style.height = `${Math.min(pct * 2.5, 100)}%`; // Scaled for visual height
+        if (bar) bar.style.height = `${Math.min(pct * 2.5, 100)}%`;
         if (pctText) pctText.textContent = `${pct}%`;
         if (countText) countText.textContent = `${count}x`;
 
-        // Highlight Hot and Cold States
         if (count === maxCount && maxCount > 0) {
-          card.className = "bg-darkBg border-2 border-emerald-500/80 rounded-lg p-2.5 flex flex-col items-center justify-between h-44 relative overflow-hidden transition-all duration-300 shadow-lg shadow-emerald-950/30";
+          card.className = "bg-darkBg border-2 border-emerald-500/80 rounded-lg p-2.5 flex flex-col items-center justify-between h-44 relative overflow-hidden transition-all duration-300 shadow-lg shadow-emerald-500/20";
           badge.className = "text-[9px] font-bold px-1.5 py-0.5 rounded opacity-100 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 uppercase font-mono";
           badge.textContent = "HOT";
           if (bar) bar.className = "w-full bg-emerald-500 rounded-full bar-transition";
         } else if (count === minCount) {
-          card.className = "bg-darkBg border-2 border-rose-500/80 rounded-lg p-2.5 flex flex-col items-center justify-between h-44 relative overflow-hidden transition-all duration-300 shadow-lg shadow-rose-950/30";
+          card.className = "bg-darkBg border-2 border-rose-500/80 rounded-lg p-2.5 flex flex-col items-center justify-between h-44 relative overflow-hidden transition-all duration-300 shadow-lg shadow-rose-500/20";
           badge.className = "text-[9px] font-bold px-1.5 py-0.5 rounded opacity-100 bg-rose-500/20 text-rose-400 border border-rose-500/40 uppercase font-mono";
           badge.textContent = "COLD";
           if (bar) bar.className = "w-full bg-rose-500 rounded-full bar-transition";
@@ -694,23 +742,21 @@
 
     /* AUTOMATED SIGNAL ENGINE STRATEGY MATRIX */
     function evaluateStrategySignals(latestTick = null) {
-      if (tickHistory.length < 10) return; // Need minimum samples
+      if (tickHistory.length < 10) return;
 
       activeContractType = document.getElementById('contractTypeSelect').value;
       activeBarrier = parseInt(document.getElementById('barrierInput').value) || 4;
 
-      let action = "NO SIGNAL";
+      let action = 'NO SIGNAL';
       let confidence = 0;
-      let rationale = "";
+      let rationale = '';
       let isPositiveTrigger = false;
       let isNegativeTrigger = false;
-      let targetDigit = "--";
+      let targetDigit = '--';
 
       const recent10 = tickHistory.slice(-10);
-      const recent5 = tickHistory.slice(-5);
 
       if (activeContractType === 'EVEN_ODD') {
-        // Count consecutive Even/Odd streak
         let evenStreak = 0;
         let oddStreak = 0;
 
@@ -724,25 +770,23 @@
           }
         }
 
-        // Streak Reversal or Momentum Strategy
         if (evenStreak >= 4) {
-          action = "ENTER ODD";
+          action = 'ENTER ODD';
           confidence = Math.min(60 + (evenStreak * 8), 95);
-          targetDigit = "ODD (1,3,5,7,9)";
+          targetDigit = 'ODD (1,3,5,7,9)';
           rationale = `Detected heavy streak of ${evenStreak} consecutive EVEN digits. High statistical probability of mean-reversion towards ODD.`;
-          isNegativeTrigger = true; // Signal ODD (Red)
+          isNegativeTrigger = true;
         } else if (oddStreak >= 4) {
-          action = "ENTER EVEN";
+          action = 'ENTER EVEN';
           confidence = Math.min(60 + (oddStreak * 8), 95);
-          targetDigit = "EVEN (0,2,4,6,8)";
+          targetDigit = 'EVEN (0,2,4,6,8)';
           rationale = `Detected heavy streak of ${oddStreak} consecutive ODD digits. High statistical probability of mean-reversion towards EVEN.`;
-          isPositiveTrigger = true; // Signal EVEN (Blue)
+          isPositiveTrigger = true;
         } else {
           rationale = `Market balance neutral. Current streak: ${evenStreak > 0 ? evenStreak + ' Even' : oddStreak + ' Odd'}. Waiting for a 4+ streak cluster.`;
         }
 
       } else if (activeContractType === 'OVER_UNDER') {
-        // Over/Under Strategy based on barrier distribution
         let overCount = 0;
         let underCount = 0;
 
@@ -768,7 +812,6 @@
         }
 
       } else if (activeContractType === 'MATCHES_DIFFERS') {
-        // Matches/Differs based on cold/hot digit repeat frequency
         const lastDigit = tickHistory[tickHistory.length - 1];
         const matchCount = recent10.filter(d => d === activeBarrier).length;
 
@@ -789,29 +832,27 @@
         }
       }
 
-      // Render Strategy Panel Details
       document.getElementById('recommendedAction').textContent = action;
       document.getElementById('targetPrediction').textContent = targetDigit;
       document.getElementById('confidenceScore').textContent = `${confidence}%`;
       document.getElementById('confidenceBar').style.width = `${confidence}%`;
       document.getElementById('strategyRationale').textContent = rationale;
 
-      // Update Signal Glow Circles & Countdown
       if (isPositiveTrigger) {
         triggerCircleGlow('blue', action);
-        updateSignalBadge(action, "blue");
+        updateSignalBadge(action, 'blue');
         resetCountdownTimer(5);
         playBeep(800, 'sine', 0.2);
         if (latestTick) addLog(new Date().toLocaleTimeString(), activeSymbol, activeContractType, latestTick.quote, latestTick.digit, action, `${confidence}%`);
       } else if (isNegativeTrigger) {
         triggerCircleGlow('red', action);
-        updateSignalBadge(action, "red");
+        updateSignalBadge(action, 'red');
         resetCountdownTimer(5);
         playBeep(400, 'sawtooth', 0.25);
         if (latestTick) addLog(new Date().toLocaleTimeString(), activeSymbol, activeContractType, latestTick.quote, latestTick.digit, action, `${confidence}%`);
       } else {
         resetGlowCircles();
-        updateSignalBadge("WAITING FOR SIGNAL", "gray");
+        updateSignalBadge('WAITING FOR SIGNAL', 'gray');
       }
     }
 
@@ -823,21 +864,21 @@
       const redVal = document.getElementById('redCircleVal');
 
       if (color === 'blue') {
-        blueCircle.className = "w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 border-blue-400 bg-blue-600/30 flex flex-col items-center justify-center transition-all duration-300 pulse-glow-blue cursor-pointer";
-        blueVal.textContent = "SIGNAL ACTIVE";
-        blueVal.className = "text-xs font-mono text-blue-300 font-bold mt-1";
+        blueCircle.className = 'w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 border-blue-400 bg-blue-600/30 flex flex-col items-center justify-center transition-all duration-300 pulse-glow-blue';
+        blueVal.textContent = 'SIGNAL ACTIVE';
+        blueVal.className = 'text-xs font-mono text-blue-300 font-bold mt-1';
 
-        redCircle.className = "w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 border-gray-800 bg-gray-900/40 flex flex-col items-center justify-center transition-all duration-300 opacity-40";
-        redVal.textContent = "IDLE";
-        redVal.className = "text-xs font-mono text-gray-500 mt-1";
+        redCircle.className = 'w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 border-gray-800 bg-gray-900/40 flex flex-col items-center justify-center transition-all duration-300 opacity-40';
+        redVal.textContent = 'IDLE';
+        redVal.className = 'text-xs font-mono text-gray-500 mt-1';
       } else if (color === 'red') {
-        redCircle.className = "w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 border-rose-400 bg-rose-600/30 flex flex-col items-center justify-center transition-all duration-300 pulse-glow-red cursor-pointer";
-        redVal.textContent = "SIGNAL ACTIVE";
-        redVal.className = "text-xs font-mono text-rose-300 font-bold mt-1";
+        redCircle.className = 'w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 border-rose-400 bg-rose-600/30 flex flex-col items-center justify-center transition-all duration-300 pulse-glow-red';
+        redVal.textContent = 'SIGNAL ACTIVE';
+        redVal.className = 'text-xs font-mono text-rose-300 font-bold mt-1';
 
-        blueCircle.className = "w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 border-gray-800 bg-gray-900/40 flex flex-col items-center justify-center transition-all duration-300 opacity-40";
-        blueVal.textContent = "IDLE";
-        blueVal.className = "text-xs font-mono text-gray-500 mt-1";
+        blueCircle.className = 'w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 border-gray-800 bg-gray-900/40 flex flex-col items-center justify-center transition-all duration-300 opacity-40';
+        blueVal.textContent = 'IDLE';
+        blueVal.className = 'text-xs font-mono text-gray-500 mt-1';
       }
     }
 
@@ -847,13 +888,13 @@
       const blueVal = document.getElementById('blueCircleVal');
       const redVal = document.getElementById('redCircleVal');
 
-      blueCircle.className = "w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 border-gray-700 bg-blue-950/20 flex flex-col items-center justify-center transition-all duration-300";
-      blueVal.textContent = "IDLE";
-      blueVal.className = "text-xs font-mono text-blue-400 mt-1";
+      blueCircle.className = 'w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 border-gray-700 bg-blue-950/20 flex flex-col items-center justify-center transition-all duration-300';
+      blueVal.textContent = 'IDLE';
+      blueVal.className = 'text-xs font-mono text-blue-400 mt-1';
 
-      redCircle.className = "w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 border-gray-700 bg-rose-950/20 flex flex-col items-center justify-center transition-all duration-300";
-      redVal.textContent = "IDLE";
-      redVal.className = "text-xs font-mono text-rose-400 mt-1";
+      redCircle.className = 'w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 border-gray-700 bg-rose-950/20 flex flex-col items-center justify-center transition-all duration-300';
+      redVal.textContent = 'IDLE';
+      redVal.className = 'text-xs font-mono text-rose-400 mt-1';
     }
 
     /* Reset & Run Signal Expiry Countdown */
@@ -866,7 +907,8 @@
         secondsRemaining--;
         if (secondsRemaining <= 0) {
           clearInterval(countdownInterval);
-          document.getElementById('timerDisplay').textContent = "EXPIRED";
+          countdownInterval = null;
+          document.getElementById('timerDisplay').textContent = 'EXPIRED';
           resetGlowCircles();
         } else {
           document.getElementById('timerDisplay').textContent = `${secondsRemaining} Ticks Remaining`;
@@ -878,11 +920,11 @@
     function updateSignalBadge(text, color) {
       const badge = document.getElementById('signalBadge');
       if (color === 'blue') {
-        badge.className = "px-3 py-1 rounded border border-blue-500/50 bg-blue-500/20 text-xs font-mono text-blue-300 font-bold animate-pulse";
+        badge.className = 'px-3 py-1 rounded border border-blue-500/50 bg-blue-500/20 text-xs font-mono text-blue-300 font-bold animate-pulse';
       } else if (color === 'red') {
-        badge.className = "px-3 py-1 rounded border border-rose-500/50 bg-rose-500/20 text-xs font-mono text-rose-300 font-bold animate-pulse";
+        badge.className = 'px-3 py-1 rounded border border-rose-500/50 bg-rose-500/20 text-xs font-mono text-rose-300 font-bold animate-pulse';
       } else {
-        badge.className = "px-3 py-1 rounded border border-gray-700 bg-gray-800 text-xs font-mono text-gray-400 font-bold";
+        badge.className = 'px-3 py-1 rounded border border-gray-700 bg-gray-800 text-xs font-mono text-gray-400 font-bold';
       }
       badge.textContent = text;
     }
@@ -890,20 +932,19 @@
     /* Append Log Row to Execution Logs Table */
     function addLog(time, symbol, contract, quote, digit, signal, conf) {
       const tbody = document.getElementById('logsTableBody');
-      
-      // Remove empty state placeholder
+
       if (tbody.children.length === 1 && tbody.children[0].children.length === 1) {
         tbody.innerHTML = '';
       }
 
       const tr = document.createElement('tr');
-      tr.className = "hover:bg-darkBg/50 transition-colors";
+      tr.className = 'hover:bg-darkBg/50 transition-colors';
 
-      const signalColor = signal.includes("EVEN") || signal.includes("OVER") || signal.includes("MATCH") 
-        ? "text-blue-400 font-bold" 
-        : signal.includes("ODD") || signal.includes("UNDER") || signal.includes("DIFFERS") 
-        ? "text-rose-400 font-bold" 
-        : "text-gray-400";
+      const signalColor = signal.includes('EVEN') || signal.includes('OVER') || signal.includes('MATCH')
+        ? 'text-blue-400 font-bold'
+        : signal.includes('ODD') || signal.includes('UNDER') || signal.includes('DIFFERS')
+        ? 'text-rose-400 font-bold'
+        : 'text-gray-400';
 
       tr.innerHTML = `
         <td class="py-2 px-3 text-gray-400">${time}</td>
@@ -917,7 +958,6 @@
 
       tbody.insertBefore(tr, tbody.firstChild);
 
-      // Limit table rows to 25 entries
       if (tbody.children.length > 25) {
         tbody.removeChild(tbody.lastChild);
       }
@@ -942,13 +982,13 @@
       badgeText.textContent = text;
 
       if (color === 'green') {
-        badgeDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block";
+        badgeDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block';
       } else if (color === 'yellow') {
-        badgeDot.className = "w-2.5 h-2.5 rounded-full bg-amber-500 inline-block animate-ping";
+        badgeDot.className = 'w-2.5 h-2.5 rounded-full bg-amber-500 inline-block animate-ping';
       } else if (color === 'red') {
-        badgeDot.className = "w-2.5 h-2.5 rounded-full bg-rose-500 inline-block";
+        badgeDot.className = 'w-2.5 h-2.5 rounded-full bg-rose-500 inline-block';
       } else {
-        badgeDot.className = "w-2.5 h-2.5 rounded-full bg-gray-500 inline-block";
+        badgeDot.className = 'w-2.5 h-2.5 rounded-full bg-gray-500 inline-block';
       }
     }
 
@@ -958,19 +998,18 @@
 
       if (active) {
         startBtn.disabled = true;
-        startBtn.className = "flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600/40 text-gray-400 font-semibold text-xs opacity-60 cursor-not-allowed";
+        startBtn.className = 'flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600/40 text-gray-400 font-semibold text-xs opacity-60 cursor-not-allowed';
 
         stopBtn.disabled = false;
-        stopBtn.className = "flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs transition-all shadow-lg hover:shadow-rose-900/40 active:scale-95";
+        stopBtn.className = 'flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs transition-all shadow-lg hover:shadow-rose-900/40 active:scale-[0.99]';
       } else {
         startBtn.disabled = false;
-        startBtn.className = "flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-all shadow-lg hover:shadow-emerald-900/40 active:scale-95";
+        startBtn.className = 'flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-all shadow-lg hover:shadow-emerald-900/40 active:scale-[0.99]';
 
         stopBtn.disabled = true;
-        stopBtn.className = "flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-600/50 text-gray-400 font-semibold text-xs transition-all opacity-60 cursor-not-allowed";
+        stopBtn.className = 'flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-600/50 text-gray-400 font-semibold text-xs transition-all opacity-60 cursor-not-allowed';
       }
     }
   </script>
 </body>
 </html>
-```
