@@ -466,7 +466,11 @@
             count: 100,
             end: 'latest',
             start: 1,
-            style: 'ticks',
+            style: 'ticks'
+          }));
+
+          socket.send(JSON.stringify({
+            ticks: activeSymbol,
             subscribe: 1
           }));
 
@@ -476,10 +480,12 @@
         socket.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
+            console.log('WS payload:', data);
 
             if (data.error) {
               console.error('Deriv error:', data.error);
               updateStatus('Error', 'red');
+              addLog('SYSTEM', activeSymbol, 'ERROR', '--', JSON.stringify(data.error), '--');
               return;
             }
 
@@ -505,10 +511,12 @@
           updateStatus('Error', 'red');
         };
 
-        socket.onclose = () => {
+        socket.onclose = (event) => {
           stopKeepAlive();
           isConnected = false;
           toggleControls(false);
+
+          console.log('Socket closed:', event.code, event.reason || 'No reason');
 
           if (!isManualStop) {
             reconnectAttempts += 1;
@@ -522,7 +530,7 @@
 
           reconnectAttempts = 0;
           updateStatus('Disconnected', 'gray');
-          addLog('SYSTEM', activeSymbol, 'DISCONNECTED', '--', 'Connection closed', '--');
+          addLog('SYSTEM', activeSymbol, 'DISCONNECTED', '--', `Connection closed (${event.code})`, '--');
         };
       } catch (err) {
         console.error('Failed to connect', err);
