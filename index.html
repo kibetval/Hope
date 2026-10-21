@@ -91,7 +91,7 @@
           <span id="statusText">Disconnected</span>
         </div>
 
-        <button id="startBtn" onclick="startBot()" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-all shadow-lg hover:shadow-emerald-900/40">
+        <button id="startBtn" onclick="startBot()" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-all shadow-lg hover:shadow-emerald-900/40 active:scale-[0.98]">
           <i class="fa-solid fa-play text-xs"></i>
           <span>START BOT</span>
         </button>
@@ -110,7 +110,7 @@
           <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
             <i class="fa-solid fa-sliders text-blue-400 mr-1.5"></i>Contract Type
           </label>
-          <select id="contractTypeSelect" onchange="onContractTypeChange()" class="w-full bg-darkBg border border-darkBorder text-white text-sm rounded-lg px-3.5 py-2.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30">
+          <select id="contractTypeSelect" onchange="onContractTypeChange()" class="w-full bg-darkBg border border-darkBorder text-white text-sm rounded-lg px-3.5 py-2.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none">
             <option value="MATCHES_DIFFERS">Matches / Differs</option>
             <option value="EVEN_ODD" selected>Even / Odd</option>
             <option value="OVER_UNDER">Over / Under</option>
@@ -121,7 +121,7 @@
           <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
             <i class="fa-solid fa-wave-square text-blue-400 mr-1.5"></i>Volatility Index
           </label>
-          <select id="symbolSelect" onchange="onSymbolChange()" class="w-full bg-darkBg border border-darkBorder text-white text-sm rounded-lg px-3.5 py-2.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30">
+          <select id="symbolSelect" onchange="onSymbolChange()" class="w-full bg-darkBg border border-darkBorder text-white text-sm rounded-lg px-3.5 py-2.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none">
             <option value="R_10">Volatility 10 Index (R_10)</option>
             <option value="R_25">Volatility 25 Index (R_25)</option>
             <option value="R_50" selected>Volatility 50 Index (R_50)</option>
@@ -144,7 +144,7 @@
             <i class="fa-solid fa-bullseye text-blue-400 mr-1.5"></i>Barrier / Target Digit (0-9)
           </label>
           <div class="flex items-center gap-2">
-            <input id="barrierInput" type="number" min="0" max="9" value="4" onchange="updateAnalyticsUI()" class="w-full bg-darkBg border border-darkBorder text-white text-sm rounded-lg px-3.5 py-2.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30" />
+            <input id="barrierInput" type="number" min="0" max="9" value="4" onchange="updateAnalyticsUI()" class="w-full bg-darkBg border border-darkBorder text-white text-sm rounded-lg px-3.5 py-2.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none" />
             <span class="text-xs text-gray-500 font-mono italic whitespace-nowrap">Used for Over/Under & Matches</span>
           </div>
         </div>
@@ -246,7 +246,7 @@
 
         <div class="bg-blue-950/20 border border-blue-900/40 rounded-lg p-3">
           <p id="strategyRationale" class="text-xs text-blue-200/80 leading-relaxed font-sans">
-            Start the bot to connect to Deriv WebSocket feed. The algorithmic engine will continuously stream ticks, calculate moving probabilities, and generate visual trade signals upon streak patterns.
+            Start the bot to connect to Deriv WebSocket feed. The algorithmic engine will continuously stream ticks, calculate moving probabilities, and generate visual trade signals upon streak reversion events.
           </p>
         </div>
       </div>
@@ -309,6 +309,9 @@
     let activeSubscriptionId = null;
     let isManualStop = false;
     let audioCtx = null;
+    let reconnectTimer = null;
+    let reconnectAttempts = 0;
+    const MAX_RECONNECT_ATTEMPTS = 5;
 
     function playBeep(freq = 600, type = 'sine', duration = 0.15) {
       try {
@@ -424,12 +427,22 @@
 
     function startBot() {
       isManualStop = false;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
 
       if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
         return;
       }
 
-      const appId = document.getElementById('appIdInput').value.trim() || '1089';
+      const appId = document.getElementById('appIdInput').value.trim();
+      if (!/^\d+$/.test(appId) || Number(appId) <= 0) {
+        updateStatus('Invalid App ID', 'red');
+        addLog('SYSTEM', activeSymbol, 'ERROR', '--', 'App ID must be a positive integer', '--');
+        return;
+      }
+
       activeSymbol = document.getElementById('symbolSelect').value;
       activeBarrier = parseInt(document.getElementById('barrierInput').value, 10) || 4;
 
@@ -442,6 +455,7 @@
 
         socket.onopen = () => {
           isConnected = true;
+          reconnectAttempts = 0;
           updateStatus('Connected', 'green');
           toggleControls(true);
           startKeepAlive();
@@ -494,8 +508,19 @@
         socket.onclose = () => {
           stopKeepAlive();
           isConnected = false;
-          updateStatus('Disconnected', 'gray');
           toggleControls(false);
+
+          if (!isManualStop && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            reconnectAttempts += 1;
+            updateStatus(`Reconnecting (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`, 'yellow');
+            reconnectTimer = setTimeout(() => {
+              startBot();
+            }, 1500 * reconnectAttempts);
+            return;
+          }
+
+          reconnectAttempts = 0;
+          updateStatus('Disconnected', 'gray');
           addLog('SYSTEM', activeSymbol, 'DISCONNECTED', '--', 'Connection closed', '--');
         };
       } catch (err) {
@@ -505,8 +530,13 @@
     }
 
     function stopBot(clearData = true, forceClose = false) {
-      isManualStop = !forceClose ? true : isManualStop;
+      isManualStop = !forceClose;
       stopKeepAlive();
+
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
 
       if (countdownInterval) {
         clearInterval(countdownInterval);
@@ -527,6 +557,7 @@
 
       socket = null;
       isConnected = false;
+      reconnectAttempts = 0;
       updateStatus('Disconnected', 'gray');
       toggleControls(false);
       resetGlowCircles();
